@@ -1,0 +1,634 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SYSTEM_ADMINISTRATOR
+  HOSPITAL_ADMINISTRATOR
+  HR_OFFICER
+  PAYROLL_OFFICER
+  ACCOUNTANT
+  DEPARTMENT_MANAGER
+  EMPLOYEE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  TEMPORARY
+  PART_TIME
+  PROBATIONARY
+  OTHER
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RESIGNED
+  TERMINATED
+  RETIRED
+  DECEASED
+}
+
+enum PayrollStatus {
+  DRAFT
+  CALCULATED
+  UNDER_REVIEW
+  APPROVED
+  FINALIZED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+  REVERSED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveTypeName {
+  ANNUAL
+  SICK
+  MATERNITY
+  PATERNITY
+  COMPASSIONATE
+  UNPAID
+  OFFICIAL
+  OTHER
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  MOBILE_MONEY
+  OTHER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  email        String?   @unique
+  passwordHash String
+  role         UserRole  @default(EMPLOYEE)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs           AuditLog[]
+  createdDepartments  Department[] @relation("DepartmentCreatedBy")
+  updatedDepartments  Department[] @relation("DepartmentUpdatedBy")
+  createdPositions    Position[]   @relation("PositionCreatedBy")
+  updatedPositions    Position[]   @relation("PositionUpdatedBy")
+  employee            Employee?
+  payrollApprovals    PayrollApproval[]
+  payments            PayrollPayment[]
+  leaveRequests       LeaveRequest[]
+  documents           Document[]
+  notifications       Notification[]
+}
+
+model Department {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+
+  createdBy User? @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
+  employees Employee[]
+  positions Position[]
+}
+
+model Position {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  departmentId String?
+  employmentCategory EmploymentType?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  createdBy User? @relation("PositionCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("PositionUpdatedBy", fields: [updatedById], references: [id])
+  employees Employee[]
+}
+
+model Employee {
+  id                     String           @id @default(cuid())
+  employeeNumber         String           @unique
+  firstName              String
+  middleName             String?
+  lastName               String
+  gender                 Gender?
+  dateOfBirth            DateTime?
+  phone                  String?
+  email                  String?
+  address                String?
+  emergencyContactName   String?
+  emergencyContactPhone  String?
+  departmentId           String?
+  positionId             String?
+  employmentType         EmploymentType    @default(PERMANENT)
+  employmentStartDate     DateTime?
+  contractStartDate      DateTime?
+  contractEndDate        DateTime?
+  employmentStatus       EmployeeStatus    @default(ACTIVE)
+  basicSalary            Decimal           @db.Decimal(12, 2)
+  bankName               String?
+  bankAccountDetails     String?
+  cnpsNumber             String?
+  taxId                  String?
+  nationalId             String?
+  salaryPaymentMethod    PaymentMethod     @default(BANK_TRANSFER)
+  notes                  String?
+  photoUrl               String?
+  isActive               Boolean           @default(true)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  userId                 String?           @unique
+
+  department          Department?          @relation(fields: [departmentId], references: [id])
+  position            Position?            @relation(fields: [positionId], references: [id])
+  user                User?                @relation(fields: [userId], references: [id])
+  salaryHistory       EmployeeSalaryHistory[]
+  allowances          EmployeeAllowance[]
+  deductions          EmployeeDeduction[]
+  payrolls            Payroll[]
+  leaveRequests       LeaveRequest[]
+  leaveBalances       LeaveBalance[]
+  attendanceRecords   AttendanceRecord[]
+  overtimeRecords     OvertimeRecord[]
+  medicalBills        MedicalBill[]
+  advances            EmployeeAdvance[]
+  loans               EmployeeLoan[]
+  bonuses             Bonus[]
+  reimbursements      Reimbursement[]
+  adjustments         PayrollAdjustment[]
+  documents           Document[]
+  payments            PayrollPayment[]
+}
+
+model EmployeeSalaryHistory {
+  id            String   @id @default(cuid())
+  employeeId    String
+  previousSalary Decimal @db.Decimal(12, 2)
+  newSalary     Decimal @db.Decimal(12, 2)
+  effectiveDate DateTime
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model SalaryComponent {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  type              String
+  amount            Decimal? @db.Decimal(12, 2)
+  percentage        Decimal? @db.Decimal(8, 4)
+  isFixed           Boolean  @default(true)
+  taxable           Boolean  @default(true)
+  recurring         Boolean  @default(true)
+  isActive          Boolean  @default(true)
+  effectiveStart    DateTime?
+  effectiveEnd      DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([name])
+}
+
+model EmployeeAllowance {
+  id              String   @id @default(cuid())
+  employeeId      String
+  name            String
+  amount          Decimal  @db.Decimal(12, 2)
+  percentage      Decimal? @db.Decimal(8, 4)
+  isFixed         Boolean  @default(true)
+  taxable         Boolean  @default(true)
+  recurring       Boolean  @default(true)
+  effectiveStart  DateTime
+  effectiveEnd    DateTime?
+  approvalStatus  ApprovalStatus @default(APPROVED)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model EmployeeDeduction {
+  id             String   @id @default(cuid())
+  employeeId     String
+  category       String
+  reference      String?
+  amount         Decimal  @db.Decimal(12, 2)
+  recurring      Boolean  @default(true)
+  startDate      DateTime
+  endDate        DateTime?
+  remainingBalance Decimal? @db.Decimal(12, 2)
+  approvalStatus ApprovalStatus @default(PENDING)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model StatutoryRule {
+  id                 String    @id @default(cuid())
+  name               String
+  ruleType           String
+  description        String?
+  calculationMethod  String
+  rate               Decimal?  @db.Decimal(10, 6)
+  fixedAmount        Decimal?  @db.Decimal(12, 2)
+  minThreshold       Decimal?  @db.Decimal(12, 2)
+  maxThreshold       Decimal?  @db.Decimal(12, 2)
+  deductionBase      String?
+  taxExempt          Boolean   @default(false)
+  effectiveStart     DateTime
+  effectiveEnd       DateTime?
+  source             String?
+  lastVerifiedDate   DateTime?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  taxBrackets TaxBracket[]
+}
+
+model TaxBracket {
+  id            String   @id @default(cuid())
+  statutoryRuleId String
+  lowerBound    Decimal? @db.Decimal(12, 2)
+  upperBound    Decimal? @db.Decimal(12, 2)
+  rate          Decimal  @db.Decimal(10, 6)
+  createdAt     DateTime @default(now())
+
+  statutoryRule StatutoryRule @relation(fields: [statutoryRuleId], references: [id])
+}
+
+model PayrollPeriod {
+  id              String       @id @default(cuid())
+  name            String       @unique
+  periodMonth     Int
+  periodYear      Int
+  startDate       DateTime
+  endDate         DateTime
+  plannedPaymentDate DateTime?
+  status          PayrollStatus @default(DRAFT)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  payrolls        Payroll[]
+  approvals       PayrollApproval[]
+  payments        PayrollPayment[]
+}
+
+model Payroll {
+  id                String       @id @default(cuid())
+  payrollPeriodId   String
+  employeeId        String
+  employeeNumber    String
+  basicSalary       Decimal      @db.Decimal(12, 2)
+  grossEarnings     Decimal      @db.Decimal(12, 2)
+  taxableSalary     Decimal      @db.Decimal(12, 2)
+  employeeStatutory Decimal      @db.Decimal(12, 2)
+  internalDeductions Decimal     @db.Decimal(12, 2)
+  otherDeductions   Decimal      @db.Decimal(12, 2)
+  netSalary         Decimal      @db.Decimal(12, 2)
+  employerContributions Decimal   @db.Decimal(12, 2)
+  status            PayrollStatus @default(DRAFT)
+  calculationData   Json?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id])
+  lineItems     PayrollLineItem[]
+  deductions    PayrollDeduction[]
+  approvals     PayrollApproval[]
+  payments      PayrollPayment[]
+}
+
+model PayrollLineItem {
+  id                 String   @id @default(cuid())
+  payrollId          String
+  name               String
+  amount             Decimal  @db.Decimal(12, 2)
+  type               String
+  taxable            Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  payroll Payroll @relation(fields: [payrollId], references: [id])
+}
+
+model PayrollDeduction {
+  id            String   @id @default(cuid())
+  payrollId     String
+  category      String
+  amount        Decimal  @db.Decimal(12, 2)
+  isEmployer    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  payroll Payroll @relation(fields: [payrollId], references: [id])
+}
+
+model PayrollApproval {
+  id            String    @id @default(cuid())
+  payrollId     String
+  payrollPeriodId String
+  userId        String
+  action        String
+  comments      String?
+  createdAt     DateTime  @default(now())
+
+  payroll      Payroll       @relation(fields: [payrollId], references: [id])
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+}
+
+model PayrollPayment {
+  id               String        @id @default(cuid())
+  payrollId        String
+  payrollPeriodId  String
+  employeeId       String
+  netAmountDue     Decimal       @db.Decimal(12, 2)
+  amountPaid       Decimal       @db.Decimal(12, 2)
+  paymentDate      DateTime?
+  paymentMethod    PaymentMethod @default(BANK_TRANSFER)
+  transactionReference String?
+  paymentStatus    String        @default("PENDING")
+  recordedById     String?
+  notes            String?
+  createdAt        DateTime      @default(now())
+
+  payroll      Payroll        @relation(fields: [payrollId], references: [id])
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  employee     Employee       @relation(fields: [employeeId], references: [id])
+  recordedBy   User?          @relation(fields: [recordedById], references: [id])
+}
+
+model LeaveType {
+  id          String       @id @default(cuid())
+  name        LeaveTypeName
+  description String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+}
+
+model LeaveRequest {
+  id                 String         @id @default(cuid())
+  employeeId         String
+  leaveType          LeaveTypeName
+  requestDate        DateTime       @default(now())
+  startDate          DateTime
+  endDate            DateTime
+  workingDaysRequested Int
+  reason             String?
+  approvalStatus     ApprovalStatus @default(PENDING)
+  reviewerId         String?
+  approvalDate       DateTime?
+  comments           String?
+  createdAt          DateTime       @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  reviewer User?    @relation(fields: [reviewerId], references: [id])
+}
+
+model LeaveBalance {
+  id             String    @id @default(cuid())
+  employeeId     String
+  annualEntitlement Int
+  accruedLeave   Int
+  leaveTaken     Int
+  leaveRemaining Int
+  carriedForward Int
+  unpaidLeaveDays Int
+  updatedAt      DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model AttendanceRecord {
+  id              String    @id @default(cuid())
+  employeeId      String
+  date            DateTime
+  scheduledStart  DateTime?
+  scheduledEnd    DateTime?
+  actualStart     DateTime?
+  actualEnd       DateTime?
+  breakDuration   Int?
+  hoursWorked     Decimal?  @db.Decimal(6,2)
+  overtimeHours   Decimal?  @db.Decimal(6,2)
+  shiftCategory   String?
+  approvalStatus  ApprovalStatus @default(PENDING)
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model Shift {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+}
+
+model OvertimeRecord {
+  id              String    @id @default(cuid())
+  employeeId      String
+  date            DateTime
+  overtimeHours   Decimal   @db.Decimal(6,2)
+  overtimeType    String?
+  approved        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model MedicalBill {
+  id              String    @id @default(cuid())
+  employeeId      String
+  billReference   String
+  treatmentDate   DateTime?
+  description     String?
+  totalAmount     Decimal   @db.Decimal(12, 2)
+  amountPaid      Decimal   @db.Decimal(12, 2)
+  outstandingBalance Decimal @db.Decimal(12, 2)
+  monthlyDeduction Decimal  @db.Decimal(12, 2)
+  deductionStartMonth DateTime?
+  expectedFinalDeductionMonth DateTime?
+  approvalStatus  ApprovalStatus @default(PENDING)
+  approvedById    String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model EmployeeAdvance {
+  id                 String    @id @default(cuid())
+  employeeId         String
+  referenceNumber    String
+  amountRequested    Decimal   @db.Decimal(12, 2)
+  amountApproved     Decimal   @db.Decimal(12, 2)
+  requestDate        DateTime
+  approvalDate       DateTime?
+  disbursementDate   DateTime?
+  repaymentSchedule  String?
+  monthlyInstallment Decimal   @db.Decimal(12, 2)
+  remainingBalance   Decimal   @db.Decimal(12, 2)
+  startPayrollPeriod String?
+  expectedFinalRepaymentPeriod String?
+  status             String    @default("PENDING")
+  approverId         String?
+  notes              String?
+  createdAt          DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model EmployeeLoan {
+  id                 String    @id @default(cuid())
+  employeeId         String
+  referenceNumber    String
+  amountRequested    Decimal   @db.Decimal(12, 2)
+  amountApproved     Decimal   @db.Decimal(12, 2)
+  requestDate        DateTime
+  approvalDate       DateTime?
+  disbursementDate   DateTime?
+  repaymentSchedule  String?
+  monthlyInstallment Decimal   @db.Decimal(12, 2)
+  remainingBalance   Decimal   @db.Decimal(12, 2)
+  status             String    @default("PENDING")
+  approverId         String?
+  notes              String?
+  createdAt          DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model LoanRepayment {
+  id            String    @id @default(cuid())
+  employeeId    String
+  loanId        String?
+  amount        Decimal   @db.Decimal(12, 2)
+  payrollPeriod String?
+  createdAt     DateTime  @default(now())
+}
+
+model Bonus {
+  id              String    @id @default(cuid())
+  employeeId      String
+  componentType   String
+  amount          Decimal   @db.Decimal(12, 2)
+  effectivePeriod String?
+  taxTreatment    String?
+  reason          String?
+  approvalStatus  ApprovalStatus @default(PENDING)
+  createdAt       DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model Reimbursement {
+  id             String    @id @default(cuid())
+  employeeId     String
+  componentType  String
+  amount         Decimal   @db.Decimal(12, 2)
+  effectivePeriod String?
+  taxTreatment   String?
+  reason         String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  createdAt      DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model PayrollAdjustment {
+  id             String    @id @default(cuid())
+  employeeId     String
+  componentType  String
+  amount         Decimal   @db.Decimal(12, 2)
+  effectivePeriod String?
+  taxTreatment   String?
+  reason         String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  createdAt      DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model AuditLog {
+  id             String    @id @default(cuid())
+  userId         String?
+  action         String
+  affectedRecord  String?
+  dateTime       DateTime  @default(now())
+  beforeValues   Json?
+  afterValues    Json?
+  reason         String?
+  correlationId  String?
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model SystemSetting {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  value       String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Document {
+  id          String    @id @default(cuid())
+  employeeId  String?
+  fileName    String
+  fileUrl     String
+  fileType    String?
+  uploadedById String?
+  createdAt   DateTime  @default(now())
+
+  employee Employee? @relation(fields: [employeeId], references: [id])
+  uploadedBy User? @relation(fields: [uploadedById], references: [id])
+}
+
+model Notification {
+  id          String    @id @default(cuid())
+  userId      String?
+  title       String
+  message     String
+  isRead      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
